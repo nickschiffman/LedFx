@@ -151,5 +151,4 @@ class Govee(NetworkedDevice):
 
         self.update_config(config)
 
-        self.setup_subdevice()
 
