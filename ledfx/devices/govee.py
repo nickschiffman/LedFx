@@ -46,12 +46,12 @@ class Govee(NetworkedDevice):
         self.multicast_group = '239.255.255.250'  # Multicast Address
         self.send_response_port = 4001  # Send Scanning
         self.recv_port = 4002  # Responses
-        self.udp_server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # self.udp_server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) // test remove
         # self.udp_server.bind(('', self.recv_port))
 
     def send_udp(self, message, port=4003):
         data = json.dumps(message).encode('utf-8')
-        self.udp_server.sendto(data, (self._config["ip_address"], port))
+        self._sock.sendto(data, (self._config["ip_address"], port))
 
     # Set Light Brightness
     def set_brightness(self, value):
@@ -63,6 +63,7 @@ class Govee(NetworkedDevice):
         })
 
     def activate(self):
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         _LOGGER.info("Activating UDP stream mode...")
         self.send_udp({
             "msg": {
@@ -83,7 +84,7 @@ class Govee(NetworkedDevice):
                 "data": {"pt": "uwABsQAL"}
             }
         })
-        if self._sock is not None:
+        if self._sock.close() is not None:
             self._sock.close()
             self._sock = None
 
@@ -96,9 +97,9 @@ class Govee(NetworkedDevice):
             checksum ^= byte
         return checksum
 
-    def create_dream_view_packet(self, colors):
-        header = [0xBB, 0x00, 250, 0xB0, 0x01, len(colors) // 3]
-        full_packet = header + colors
+    def create_dream_view_packet(self, rgb_data):
+        header = [0xBB, 0x00, 250, 0xB0, 0x01, len(rgb_data) // 3]
+        full_packet = header + rgb_data
         checksum = self.calculate_xor_checksum(full_packet)
         full_packet.append(checksum)
         return full_packet
@@ -126,10 +127,10 @@ class Govee(NetworkedDevice):
                 "data": {}
             }
         })
-        self.udp_server.settimeout(1.0)
+        self._sock.settimeout(1.0)
         try:
             # Receive Response from the device
-            response, addr = self.udp_server.recvfrom(1024)
+            response, addr = self._sock.recvfrom(1024)
             return f"{response.decode('utf-8')}"
 
         except socket.timeout:
