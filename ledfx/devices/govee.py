@@ -6,14 +6,11 @@ import json
 import time
 from typing import Optional
 
-import requests
 import voluptuous as vol
-from requests import ConnectTimeout, ReadTimeout
 
 from ledfx.devices import NetworkedDevice
 
 _LOGGER = logging.getLogger(__name__)
-
 
 
 class Govee(NetworkedDevice):
@@ -46,12 +43,19 @@ class Govee(NetworkedDevice):
         self.multicast_group = '239.255.255.250'  # Multicast Address
         self.send_response_port = 4001  # Send Scanning
         self.recv_port = 4002  # Responses
+        self.host_is_down = False
         # self.udp_server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) // test remove
         # self.udp_server.bind(('', self.recv_port))
 
+
     def send_udp(self, message, port=4003):
         data = json.dumps(message).encode('utf-8')
-        self._sock.sendto(data, (self._config["ip_address"], port))
+        try:
+            self._sock.sendto(data, (self._config["ip_address"], port))
+        except OSError as e:
+            _LOGGER.warning(f"Host offline")
+            self.host_is_down = True
+            self.set_offline()
 
     # Set Light Brightness
     def set_brightness(self, value):
@@ -78,13 +82,14 @@ class Govee(NetworkedDevice):
 
     def deactivate(self):
         _LOGGER.debug("deactivate")
-        self.send_udp({
-            "msg": {
-                "cmd": "razer",
-                "data": {"pt": "uwABsQAL"}
-            }
-        })
-        if self._sock.close() is not None:
+        if self._sock is not None:
+            if self.host_is_down is not True:
+                self.send_udp({
+                    "msg": {
+                        "cmd": "razer",
+                        "data": {"pt": "uwABsQAL"}
+                    }
+                })
             self._sock.close()
             self._sock = None
 
@@ -134,8 +139,10 @@ class Govee(NetworkedDevice):
             return f"{response.decode('utf-8')}"
 
         except socket.timeout:
+            _LOGGER.warning(f"Host offline")
+            self.host_is_down = True
+            self.set_offline()
             return "No response received within the timeout period."
-
 
     async def async_initialize(self):
         await super().async_initialize()
@@ -151,5 +158,3 @@ class Govee(NetworkedDevice):
         }
 
         self.update_config(config)
-
-
